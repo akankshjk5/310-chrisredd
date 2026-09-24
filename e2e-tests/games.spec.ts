@@ -24,6 +24,44 @@ test.describe('Game Listing and Navigation', () => {
     });
   });
 
+  test('should filter games by category, publisher, and both together', async ({ page }) => {
+    await page.goto('/');
+
+    const allGames = page.getByTestId('game-card');
+    const initialCount = await allGames.count();
+    expect(initialCount).toBeGreaterThan(0);
+
+    const firstGame = allGames.first();
+    const categoryName = await firstGame.getByTestId('game-category').textContent();
+    const publisherName = await firstGame.getByTestId('game-publisher').textContent();
+    expect(categoryName).toBeTruthy();
+    expect(publisherName).toBeTruthy();
+
+    await test.step('Apply a category filter', async () => {
+      await page.getByLabel('Filter by category').selectOption({ label: categoryName! });
+      await expect(page).toHaveURL(/category=\d+/);
+      const visibleGames = page.locator('[data-filter-visible="true"]').getByTestId('game-card');
+      await expect(visibleGames.first().getByTestId('game-category')).toHaveText(categoryName!);
+      expect(await visibleGames.count()).toBeLessThanOrEqual(initialCount);
+    });
+
+    await test.step('Clear the category filter and apply a publisher filter', async () => {
+      await page.goto('/');
+      await page.getByLabel('Filter by publisher').selectOption({ label: publisherName! });
+      await expect(page).toHaveURL(/publisher=\d+/);
+      const visibleGames = page.locator('[data-filter-visible="true"]').getByTestId('game-card');
+      await expect(visibleGames.first().getByTestId('game-publisher')).toHaveText(publisherName!);
+    });
+
+    await test.step('Combine category and publisher filters', async () => {
+      await page.getByLabel('Filter by category').selectOption({ label: categoryName! });
+      await expect(page).toHaveURL(/category=\d+&publisher=\d+|publisher=\d+&category=\d+/);
+      const visibleGames = page.locator('[data-filter-visible="true"]').getByTestId('game-card');
+      await expect(visibleGames.first().getByTestId('game-category')).toHaveText(categoryName!);
+      await expect(visibleGames.first().getByTestId('game-publisher')).toHaveText(publisherName!);
+    });
+  });
+
   test('should navigate to correct game details page when clicking on a game', async ({ page }) => {
     let gameId: string | null;
     let gameTitle: string | null;

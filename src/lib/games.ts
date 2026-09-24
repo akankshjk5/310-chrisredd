@@ -1,4 +1,9 @@
-import { eq, asc } from 'drizzle-orm';
+/**
+ * Game data-access helpers for the Tailspin Toys Crowd Funding platform.
+ * Provides queries for retrieving game records and filtered game lists from the database.
+ */
+
+import { and, eq, asc } from 'drizzle-orm';
 import type { Database } from './db';
 import { games, categories, publishers } from '../../db/schema';
 import type { Game } from '../types/game';
@@ -24,6 +29,11 @@ type GameSelectionRow = {
     publisherId: number | null;
     publisherName: string | null;
 };
+
+export interface GameFilters {
+    categoryId?: number;
+    publisherId?: number;
+}
 
 function mapGame(row: GameSelectionRow): Game {
     return {
@@ -52,8 +62,7 @@ function baseGamesQuery(db: Database) {
 
 /** All games ordered by title. */
 export async function getAllGames(db: Database): Promise<Game[]> {
-    const rows = await baseGamesQuery(db).orderBy(asc(games.title));
-    return rows.map(mapGame);
+    return getGamesByFilters(db, {});
 }
 
 /** All game ids ordered by title. */
@@ -61,6 +70,37 @@ export async function getAllGameIds(db: Database): Promise<number[]> {
     const rows = await db.select({ id: games.id }).from(games).orderBy(asc(games.title));
     return rows.map((row) => row.id);
 }
+
+/** All games for a specific publisher, ordered by title. */
+export async function getGamesByPublisher(db: Database, publisherId: number): Promise<Game[]> {
+    return getGamesByFilters(db, { publisherId });
+}
+
+/**
+ * Returns games matching the supplied category and publisher filters.
+ *
+ * @param db - The Drizzle database client.
+ * @param filters - Optional category and publisher ids to match.
+ * @returns A promise that resolves to matching games ordered by title.
+ */
+export async function getGamesByFilters(db: Database, filters: GameFilters): Promise<Game[]> {
+    const conditions = [];
+    if (filters.categoryId !== undefined) {
+        conditions.push(eq(categories.id, filters.categoryId));
+    }
+    if (filters.publisherId !== undefined) {
+        conditions.push(eq(publishers.id, filters.publisherId));
+    }
+
+    const query = baseGamesQuery(db);
+    const rows = conditions.length > 0
+        ? await query.where(and(...conditions)).orderBy(asc(games.title))
+        : await query.orderBy(asc(games.title));
+    return rows.map(mapGame);
+}
+
+/** Alias for getGamesByPublisher to support common naming patterns. */
+export const getAllGamesByPublisher = getGamesByPublisher;
 
 /** A single game by id, or null when it does not exist. */
 export async function getGameById(db: Database, id: number): Promise<Game | null> {
