@@ -1,3 +1,8 @@
+/**
+ * Game data-access helpers for the Tailspin Toys Crowd Funding platform.
+ * Provides queries for retrieving game records and filtered game lists from the database.
+ */
+
 import { eq, asc } from 'drizzle-orm';
 import type { Database } from './db';
 import { games, categories, publishers } from '../../db/schema';
@@ -61,6 +66,17 @@ export async function getAllGameIds(db: Database): Promise<number[]> {
     const rows = await db.select({ id: games.id }).from(games).orderBy(asc(games.title));
     return rows.map((row) => row.id);
 }
+
+/** All games for a specific publisher, ordered by title. */
+export async function getGamesByPublisher(db: Database, publisherId: number): Promise<Game[]> {
+    const rows = await baseGamesQuery(db)
+        .where(eq(publishers.id, publisherId))
+        .orderBy(asc(games.title));
+    return rows.map(mapGame);
+}
+
+/** Alias for getGamesByPublisher to support common naming patterns. */
+export const getAllGamesByPublisher = getGamesByPublisher;
 
 /** A single game by id, or null when it does not exist. */
 export async function getGameById(db: Database, id: number): Promise<Game | null> {

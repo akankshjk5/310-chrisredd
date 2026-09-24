@@ -22,3 +22,13 @@ export async function getAllPublishers(db: Database): Promise<Publisher[]> {
 
     return rows.map((row) => ({ id: row.id, name: row.name }));
 }
+
+/**
+ * Returns all publishers ordered by name.
+ *
+ * @param db - The Drizzle database client.
+ * @returns A promise that resolves to an array of publisher objects.
+ */
+export async function getPublishers(db: Database): Promise<Publisher[]> {
+    return getAllPublishers(db);
+}

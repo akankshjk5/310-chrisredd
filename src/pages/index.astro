@@ -4,11 +4,19 @@ import GameCard from '../components/GameCard.astro';
 import PageHero from '../components/PageHero.astro';
 import EmptyState from '../components/EmptyState.astro';
 import { getDatabase } from '../lib/db';
-import { getAllGames } from '../lib/games';
+import { getAllGames, getGamesByPublisher } from '../lib/games';
+import { getAllPublishers } from '../lib/publishers';
 
 export const prerender = true;
 
-const games = await getAllGames(getDatabase());
+const rawPublisherId = Astro.url.searchParams.get('publisher');
+const selectedPublisherId = rawPublisherId ? Number.parseInt(rawPublisherId, 10) : undefined;
+const hasValidPublisherFilter = Number.isInteger(selectedPublisherId) && (selectedPublisherId ?? 0) > 0;
+const publishers = await getAllPublishers(getDatabase());
+const games = hasValidPublisherFilter
+    ? await getGamesByPublisher(getDatabase(), selectedPublisherId!)
+    : await getAllGames(getDatabase());
+const selectedPublisher = publishers.find((publisher) => publisher.id === selectedPublisherId)?.name ?? 'All publishers';
 ---
 
 <Layout title="Tailspin Toys - Crowdfunding your new favorite game!">
@@ -18,11 +26,41 @@ const games = await getAllGames(getDatabase());
       subtitle="Find your next game! And maybe even back one! Explore our collection!"
     />
 
+    <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="flex flex-col gap-2">
+        <label for="publisher-filter" class="text-sm font-medium text-slate-300">Filter by publisher</label>
+        <form method="get" class="flex flex-wrap items-center gap-3">
+          <select
+            id="publisher-filter"
+            name="publisher"
+            class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-cyan-400 focus:outline-none"
+            onchange="this.form.submit()"
+          >
+            <option value="">All publishers</option>
+            {publishers.map((publisher) => (
+              <option value={String(publisher.id)} selected={publisher.id === selectedPublisherId}>
+                {publisher.name}
+              </option>
+            ))}
+          </select>
+          {hasValidPublisherFilter && (
+            <a href="/" class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">
+              Clear
+            </a>
+          )}
+        </form>
+      </div>
+
+      {hasValidPublisherFilter && (
+        <p class="text-sm text-slate-300">Showing games from {selectedPublisher}</p>
+      )}
+    </div>
+
     <div>
       <h2 class="text-2xl font-medium mb-6 text-slate-100">Featured Games</h2>
 
       {games.length === 0 ? (
-        <EmptyState text="No games available at the moment." />
+        <EmptyState text={hasValidPublisherFilter ? `No games available for ${selectedPublisher}.` : 'No games available at the moment.'} />
       ) : (
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="games-grid">
           {games.map((game) => <GameCard game={game} />)}

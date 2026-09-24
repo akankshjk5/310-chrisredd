@@ -5,6 +5,7 @@ import type { Database } from './db';
 import {
     getAllGames,
     getAllGameIds,
+    getGamesByPublisher,
     getGameById,
 } from './games';
 
@@ -50,6 +51,30 @@ describe('games data-access helpers', () => {
         const ids = await getAllGameIds(db);
         const all = await getAllGames(db);
         expect(ids).toEqual(all.map((g) => g.id));
+    });
+
+    it('returns games for a specific publisher', async () => {
+        const [category] = await db
+            .insert(categories)
+            .values({ name: 'Strategy', description: 'cat' })
+            .returning({ id: categories.id });
+        const [publisherOne] = await db
+            .insert(publishers)
+            .values({ name: 'Pub One', description: 'one' })
+            .returning({ id: publishers.id });
+        const [publisherTwo] = await db
+            .insert(publishers)
+            .values({ name: 'Pub Two', description: 'two' })
+            .returning({ id: publishers.id });
+
+        await db.insert(games).values([
+            { title: 'Alpha', description: 'One', starRating: 4.0, categoryId: category.id, publisherId: publisherOne.id },
+            { title: 'Beta', description: 'Two', starRating: 4.5, categoryId: category.id, publisherId: publisherTwo.id },
+            { title: 'Gamma', description: 'Three', starRating: 5.0, categoryId: category.id, publisherId: publisherOne.id },
+        ]);
+
+        const filtered = await getGamesByPublisher(db, publisherOne.id);
+        expect(filtered.map((game) => game.title)).toEqual(['Alpha', 'Gamma']);
     });
 
     it('fetches a single game by id', async () => {
