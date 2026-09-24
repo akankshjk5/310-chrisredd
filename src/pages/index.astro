@@ -4,19 +4,15 @@ import GameCard from '../components/GameCard.astro';
 import PageHero from '../components/PageHero.astro';
 import EmptyState from '../components/EmptyState.astro';
 import { getDatabase } from '../lib/db';
-import { getAllGames, getGamesByPublisher } from '../lib/games';
+import { getAllGames } from '../lib/games';
+import { getAllCategories } from '../lib/categories';
 import { getAllPublishers } from '../lib/publishers';
 
 export const prerender = true;
 
-const rawPublisherId = Astro.url.searchParams.get('publisher');
-const selectedPublisherId = rawPublisherId ? Number.parseInt(rawPublisherId, 10) : undefined;
-const hasValidPublisherFilter = Number.isInteger(selectedPublisherId) && (selectedPublisherId ?? 0) > 0;
+const categories = await getAllCategories(getDatabase());
 const publishers = await getAllPublishers(getDatabase());
-const games = hasValidPublisherFilter
-    ? await getGamesByPublisher(getDatabase(), selectedPublisherId!)
-    : await getAllGames(getDatabase());
-const selectedPublisher = publishers.find((publisher) => publisher.id === selectedPublisherId)?.name ?? 'All publishers';
+const games = await getAllGames(getDatabase());
 ---
 
 <Layout title="Tailspin Toys - Crowdfunding your new favorite game!">
@@ -27,45 +23,116 @@ const selectedPublisher = publishers.find((publisher) => publisher.id === select
     />
 
     <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div class="flex flex-col gap-2">
-        <label for="publisher-filter" class="text-sm font-medium text-slate-300">Filter by publisher</label>
-        <form method="get" class="flex flex-wrap items-center gap-3">
+      <form method="get" class="flex flex-wrap items-end gap-3">
+        <div class="flex flex-col gap-2">
+          <label for="category-filter" class="text-sm font-medium text-slate-300">Filter by category</label>
+          <select
+            id="category-filter"
+            name="category"
+            class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-cyan-400 focus:outline-none"
+          >
+            <option value="">All categories</option>
+            {categories.map((category) => (
+              <option value={String(category.id)}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label for="publisher-filter" class="text-sm font-medium text-slate-300">Filter by publisher</label>
           <select
             id="publisher-filter"
             name="publisher"
             class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-cyan-400 focus:outline-none"
-            onchange="this.form.submit()"
           >
             <option value="">All publishers</option>
             {publishers.map((publisher) => (
-              <option value={String(publisher.id)} selected={publisher.id === selectedPublisherId}>
+              <option value={String(publisher.id)}>
                 {publisher.name}
               </option>
             ))}
           </select>
-          {hasValidPublisherFilter && (
-            <a href="/" class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">
-              Clear
-            </a>
-          )}
-        </form>
-      </div>
+        </div>
+        <button type="button" id="clear-filters" class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">
+          Clear
+        </button>
+      </form>
 
-      {hasValidPublisherFilter && (
-        <p class="text-sm text-slate-300">Showing games from {selectedPublisher}</p>
-      )}
+      <p id="filter-summary" class="text-sm text-slate-300" hidden></p>
     </div>
 
     <div>
       <h2 class="text-2xl font-medium mb-6 text-slate-100">Featured Games</h2>
 
       {games.length === 0 ? (
-        <EmptyState text={hasValidPublisherFilter ? `No games available for ${selectedPublisher}.` : 'No games available at the moment.'} />
+        <EmptyState text="No games available at the moment." />
       ) : (
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="games-grid">
-          {games.map((game) => <GameCard game={game} />)}
+          {games.map((game) => (
+            <div
+              data-filterable-game
+              data-category-id={game.category?.id ?? ''}
+              data-publisher-id={game.publisher?.id ?? ''}
+              data-filter-visible="true"
+            >
+              <GameCard game={game} />
+            </div>
+          ))}
         </div>
       )}
+      <p id="filter-empty-state" class="py-8 text-slate-300" hidden>No games match the selected filters.</p>
     </div>
   </div>
 </Layout>
+
+<script>
+  const categoryFilter = document.querySelector<HTMLSelectElement>('#category-filter');
+  const publisherFilter = document.querySelector<HTMLSelectElement>('#publisher-filter');
+  const clearFilters = document.querySelector<HTMLButtonElement>('#clear-filters');
+  const filterSummary = document.querySelector<HTMLParagraphElement>('#filter-summary');
+  const filterEmptyState = document.querySelector<HTMLParagraphElement>('#filter-empty-state');
+  const filterableGames = Array.from(document.querySelectorAll<HTMLElement>('[data-filterable-game]'));
+
+  const applyFilters = (): void => {
+    const categoryId = categoryFilter?.value ?? '';
+    const publisherId = publisherFilter?.value ?? '';
+    let visibleCount = 0;
+
+    for (const game of filterableGames) {
+      const matchesCategory = !categoryId || game.dataset.categoryId === categoryId;
+      const matchesPublisher = !publisherId || game.dataset.publisherId === publisherId;
+      const visible = matchesCategory && matchesPublisher;
+      game.hidden = !visible;
+      game.dataset.filterVisible = String(visible);
+      if (visible) visibleCount += 1;
+    }
+
+    const params = new URLSearchParams();
+    if (categoryId) params.set('category', categoryId);
+    if (publisherId) params.set('publisher', publisherId);
+    const query = params.toString();
+    history.replaceState(null, '', query ? `/?${query}` : '/');
+
+    const categoryName = categoryFilter?.selectedOptions[0]?.textContent ?? 'All categories';
+    const publisherName = publisherFilter?.selectedOptions[0]?.textContent ?? 'All publishers';
+    const hasFilters = Boolean(categoryId || publisherId);
+    if (filterSummary) {
+      filterSummary.textContent = `Showing games from ${categoryName} and ${publisherName}`;
+      filterSummary.hidden = !hasFilters;
+    }
+    if (filterEmptyState) filterEmptyState.hidden = visibleCount > 0;
+  };
+
+  const params = new URLSearchParams(window.location.search);
+  if (categoryFilter) categoryFilter.value = params.get('category') ?? '';
+  if (publisherFilter) publisherFilter.value = params.get('publisher') ?? '';
+  categoryFilter?.addEventListener('change', applyFilters);
+  publisherFilter?.addEventListener('change', applyFilters);
+  clearFilters?.addEventListener('click', () => {
+    if (categoryFilter) categoryFilter.value = '';
+    if (publisherFilter) publisherFilter.value = '';
+    applyFilters();
+  });
+  applyFilters();
+</script>
